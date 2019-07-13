@@ -1,8 +1,9 @@
 
 import requests
 import logging
+import json
 
-logging.basicConfig(level=logging.info)
+logging.basicConfig(level=logging.INFO)
 
 class OPENHABCOMM():
     def __init__(self, url=None, user=None, pw=None, datatype=str):
@@ -46,16 +47,28 @@ class OPENHABCOMM():
             logging.error (str(e))
         else:
             logging.info (myresponce.text)
-        logging.debug("Item value: %r" % myresponce)
-        return myresponce
+        logging.debug("Item value: %r" % myresponce.text)
+        return myresponce.json()
 
 
 # Testing
 if __name__ == "__main__":
     from time import sleep
-    U = "https://example.com/rest/"
-    I = "testswitch"
-    h = OPENHABCOMM(U,'user','password')
+    from dotenv import load_dotenv
+    import os
+
+    if not os.path.exists("./.env"):
+        logging.error(".env file not found")
+        sys.exit(1)
+    try:
+        load_dotenv(verbose=True)  # loads .env file in current directoy
+    except:
+        logging.error("Error loading .env file")
+        sys.exit(2)
+
+    U = os.getenv('URL')
+    I = os.getenv('OHItem')
+    h = OPENHABCOMM(U, os.getenv('User'), os.getenv('Pass'))
 
     h.sendItemCommand(I,"ON")
     sleep(.250)

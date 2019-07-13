@@ -3,6 +3,9 @@
 # https://guy.carpenter.id.au/gaugette/2013/01/14/rotary-encoder-library-for-the-raspberry-pi/
 # logging https://realpython.com/python-logging/
 import time
+import sys
+import os
+from dotenv import load_dotenv
 import threading
 import logging
 import gaugette.gpio
@@ -11,18 +14,22 @@ import gaugette.switch
 import pyOpenHabComm
 from datetime import datetime, timedelta
 
+# debugging
+# https://realpython.com/python-debugging-pdb/
+import pdb
+# set tracepoint with pdb.set_trace()
+
+
 # TODO
 # fix logger
 # better event name
 # better thread name
-# rip items out of openhab library. Just the openhab server. pass item, value & type
 # review active state
-# keyboard interrupt handling
 # term signal handling
 # notiice signal sending for future systemd service
 # File logging?? (or just use logger)
 # Improve Lamp and Encode classes
-# env file
+# potential traceback error in main
 
 
 
@@ -36,13 +43,19 @@ logging.info ("test")
 logging.debug ("debug")
 
 
-# Pins
-A_PIN = 7
-B_PIN = 9
+if not os.path.exists("./.env"):
+  logging.error(".env file not found")
+  sys.exit(1)
+try:
+  load_dotenv()  # loads .env file in current directoy
+except:
+  logging.error("Error loading .env file")
+  sys.exit(1)
 
-UPDATE_RATE = 5
-ACTIVE_RATE = .5
-INACTIVE_RATE = 3
+UPDATE_RATE =   float(os.getenv('UPDATE_RATE'))
+ACTIVE_RATE =   float(os.getenv('ACTIVE_RATE'))
+INACTIVE_RATE = float(os.getenv('INACTIVE_RATE'))
+
 
 class LAMP:
   value = None # current live value of the lamp
@@ -118,45 +131,58 @@ class ENCODE:
 
 
 lamp = LAMP("testitem")
-en = ENCODE(CLK=A_PIN, DT=B_PIN)
+en = ENCODE(CLK=int(os.getenv('A_PIN')), DT=int(os.getenv('B_Pin')))
 
 
 def update_lamp():
-  while True:
-    delta = en.popDelta()
-    logging.debug ("Delta popped was: %d" % delta)
-    # TODO Send to openhab
-    logging.debug(e.isSet())
-    print ("Why")
+  # setup openhab object
+  OH = pyOpenHabComm.OPENHABCOMM(url=os.getenv('URL'), user=os.getenv('User'), pw=os.getenv('Pass'))
+  Item = os.getenv('OHItem')
 
+  while True:
     if e.isSet():
-      print ("sleepting -update")
+      logging.debug ("Sleepting -update")
+      print ("Sleepting -update")
       time.sleep(UPDATE_RATE) # Active wait x seconds between updates
     else:
       logging.debug ("Blocked")
       print("Blocked")
       time.sleep(.1)
       e.wait()  # wait till unblocked. aka active
+      cur = OH.getItemStatus(Item) # get current value
+      logging.debug("Current item val: %s" % cur)
+      logging.info("Lamp val: %s" % cur['state'])
+    
+    delta = en.popDelta()
+    logging.debug ("Delta popped was: %d" % delta)
+    # TODO Send to openhab
+    logging.debug(e.isSet())
+    print ("Was here")
 
 e = threading.Event()
-t = threading.Thread(target=update_lamp, name="update lamp",)
+t = threading.Thread(target=update_lamp, name="update lamp", daemon=True)
 t.start()
 active = 0    # Initialize to inactive
 
 
-
 while True:
-  activeLast = active
-  active = en.active
+  try:
+    activeLast = active
+    active = en.active
 
-  logging.info ("%d: curr delta: %d" % (active,en.delta))
+    logging.info ("%d: curr delta: %d" % (active,en.delta))
 
+    # Determin how long to poll/sleep.
+    if active:  # Fast polling when activly being used
+      time.sleep(ACTIVE_RATE)
+      e.set()
+    else:       # Slower polling to reduce CPU usage when inactive
+      e.clear()
+      time.sleep(INACTIVE_RATE)
 
-
-  # Determin how long to poll/sleep.
-  if active:  # Fast polling when activly being used
-    time.sleep(ACTIVE_RATE)
-    e.set()
-  else:       # Slower polling to reduce CPU usage when inactive
-    e.clear()
-    time.sleep(INACTIVE_RATE)
+  except KeyboardInterrupt:
+    logging.info("Shutdown requested...exiting")
+    sys.exit(0)
+  except Exception:
+    traceback.print_exc(file=sys.stdout)
+    sys.exit(1)
