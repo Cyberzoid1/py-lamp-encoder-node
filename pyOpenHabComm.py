@@ -3,7 +3,8 @@ import requests
 import logging
 import json
 
-logging.basicConfig(level=logging.INFO)
+# Create Logger. Name will be the filename 'pyOpenHabComm'
+OHLogger = logging.getLogger(__name__)
 
 class OPENHABCOMM():
     def __init__(self, url=None, user=None, pw=None, datatype=str):
@@ -15,39 +16,39 @@ class OPENHABCOMM():
         self.datatype = datatype
 
     def sendItemCommand(self, item, data):
-        logging.debug ("Sending %r type %r to item %r" % (data, type(data), item))
+        OHLogger.debug ("Sending %r type %r to item %r" % (data, type(data), item))
 
         # Send activity to server
         try:
             myresponce = requests.post(self.url + 'items/' + item, data, auth=(self.user,self.pw), timeout=3.0)
         except (requests.ConnectTimeout, requests.ConnectionError) as e:
-            logging.error ("Connection error")
-            logging.error(str(e))
+            OHLogger.error ("Connection error")
+            OHLogger.error(str(e))
         except (requests.ReadTimeout, requests.Timeout) as e:
-            logging.error ("Request Timedout")
-            logging.error(str(e))
+            OHLogger.error ("Request Timedout")
+            OHLogger.error(str(e))
         except requests.RequestException as e:
-            logging.error ("Request: General Error")
-            logging.error (str(e))
+            OHLogger.error ("Request: General Error")
+            OHLogger.error (str(e))
         else:
-            logging.info (myresponce.text)
+            OHLogger.info (myresponce.text)
 
     def getItemStatus(self, item):
         try:
-            #logging.debug("u: %s   p: %s" % (self.user, self.pw))
+            #OHLogger.debug("u: %s   p: %s" % (self.user, self.pw))
             myresponce = requests.get(self.url + 'items/' + item, auth=(self.user,self.pw), timeout=3.0)
         except (requests.ConnectTimeout, requests.ConnectionError) as e:
-            logging.error ("Connection error")
-            logging.error(str(e))
+            OHLogger.error ("Connection error")
+            OHLogger.error(str(e))
         except (requests.ReadTimeout, requests.Timeout) as e:
-            logging.error ("Request Timedout")
-            logging.error(str(e))
+            OHLogger.error ("Request Timedout")
+            OHLogger.error(str(e))
         except requests.RequestException as e:
-            logging.error ("Request: General Error")
-            logging.error (str(e))
+            OHLogger.error ("Request: General Error")
+            OHLogger.error (str(e))
         else:
-            logging.info (myresponce.text)
-        logging.debug("Item value: %r" % myresponce.text)
+            OHLogger.info (myresponce.text)
+        OHLogger.debug("Item value: %r" % myresponce.text)
         return myresponce.json()
 
 
@@ -58,12 +59,12 @@ if __name__ == "__main__":
     import os
 
     if not os.path.exists("./.env"):
-        logging.error(".env file not found")
+        OHLogger.error(".env file not found")
         sys.exit(1)
     try:
         load_dotenv(verbose=True)  # loads .env file in current directoy
     except:
-        logging.error("Error loading .env file")
+        OHLogger.error("Error loading .env file")
         sys.exit(2)
 
     U = os.getenv('URL')
@@ -72,8 +73,8 @@ if __name__ == "__main__":
 
     h.sendItemCommand(I,"ON")
     sleep(.250)
-    logging.info(h.getItemStatus(I))
+    OHLogger.info(h.getItemStatus(I))
     sleep(.250)
     h.sendItemCommand(I,"OFF")
     sleep(.250)
-    logging.info(h.getItemStatus(I))
+    OHLogger.info(h.getItemStatus(I))

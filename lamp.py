@@ -21,23 +21,38 @@ import pdb
 
 
 # TODO
-# fix logger
 # term signal handling
 # notiice signal sending for future systemd service
-# File logging?? (or just use logger)
 # Improve Lamp and Encode classes
 # traceback error in main
 
 
+# Logger: logging config   https://docs.python.org/3/howto/logging-cookbook.html
+# Create logger
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 
-# Logging setup
-#logger = logging.getLogger()
-#ormater
-logging.basicConfig(level=logging.DEBUG, format='%(levelname)s %(threadName)s - %(message)s')
-#logger.setLevel(DEBUG)
-logging.info ("Start")
-logging.info ("test")
-logging.debug ("debug")
+# Create formatter
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)-5s] [%(threadName)s] - %(message)s')
+
+# Logger: create file handler
+fh = logging.FileHandler('lamp.log', mode='w')  # w while testing
+fh.setFormatter(formatter)     # set format
+fh.setLevel(logging.DEBUG)     # set level for file logging
+logger.addHandler(fh)          # add filehandle to logger
+
+# Logger: create console handle
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)     # set logging level for consol
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# reduce logging level of libraries
+logging.getLogger("pyOpenHabComm").setLevel(logging.INFO)
+logging.getLogger("schedule").setLevel(logging.WARNING)
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)   # used by requests. cuts out 'connectionpool' logs
+
 
 # .env import
 if not os.path.exists("./.env"):
@@ -75,7 +90,7 @@ class LAMP:
       new = 100
     if new < 0:
       new = 0
-    print ("curv: %d mod: %f x: %d xm: %f Newr: %f  Newd: %d" % (self.value,mod,x,x*mod,new,int(new)))
+    logging.info ("curv: %d mod: %f x: %d xm: %f Newr: %f  Newd: %d" % (self.value,mod,x,x*mod,new,int(new)))
     self.value = int(new)
 
   # Scales input based on current value
@@ -144,17 +159,15 @@ def update_lamp():
   Item = os.getenv('OHItem')
   while True:
     if eventActive.isSet():
-      logging.debug ("Sleepting -update")
-      print ("Sleepting -update")
+      logging.debug ("Worker sleepting")
       time.sleep(UPDATE_RATE) # Active wait x seconds between updates
     else:
-      logging.debug ("Blocked")
-      print("Blocked")
+      logging.debug ("Worker Blocked")
       time.sleep(.1)
       eventActive.wait()  # wait till unblocked. aka active
       cur = OH.getItemStatus(Item) # get current value
       logging.debug("Current item val: %s" % cur)
-      logging.info("Lamp val: %s" % cur['state'])
+      logging.info("Current lamp val: %s" % cur['state'])
       # update lamp with latest value from server
       lamp.setvalue(int(cur['state']))
     
@@ -165,30 +178,28 @@ def update_lamp():
       # TODO Send to openhab
       # OH.sendItemCommand(Item, lamp.value)
       logging.info("Sent %d to server" % lamp.value)
-    logging.debug(eventActive.isSet())
-    print ("Was here")
 
 # Thread setup
 eventActive = threading.Event()
-tUpdateLamp = threading.Thread(target=update_lamp, name="update lamp", daemon=True)
+tUpdateLamp = threading.Thread(target=update_lamp, name="UpdateLamp", daemon=True)
 tUpdateLamp.start()
 active = 0    # Initialize to inactive
 activeTimeout = 0
 
 # Main()
+logging.info("Script started")
 while True:
   try:
     activeLast = active
     active = en.active
     
     if active and not activeLast:
+      logging.info("Encoder now active")
       activeTimeout = float(os.getenv('ACTIVETIMEOUT'))
-      print ("Active timeout is: %f" % activeTimeout)
-
-    logging.info ("%d: curr delta: %d  Atimout: %f" % (active,en.delta, activeTimeout))
 
     # Determin how long to poll/sleep.
     if activeTimeout > 0:  # Fast polling when activly being used
+      logging.debug ("%d: curr delta: %d  Atimout: %f" % (active,en.delta, activeTimeout))
       time.sleep(ACTIVE_RATE)
       eventActive.set()
       activeTimeout = activeTimeout - ACTIVE_RATE
@@ -198,6 +209,7 @@ while True:
 
   except KeyboardInterrupt:
     logging.info("Shutdown requested...exiting")
+    logging.shutdown()
     sys.exit(0)
   except Exception:
     traceback.print_exc(file=sys.stdout)
