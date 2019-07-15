@@ -22,14 +22,11 @@ import pdb
 
 # TODO
 # fix logger
-# better event name
-# better thread name
-# review active state
 # term signal handling
 # notiice signal sending for future systemd service
 # File logging?? (or just use logger)
 # Improve Lamp and Encode classes
-# potential traceback error in main
+# traceback error in main
 
 
 
@@ -42,7 +39,7 @@ logging.info ("Start")
 logging.info ("test")
 logging.debug ("debug")
 
-
+# .env import
 if not os.path.exists("./.env"):
   logging.error(".env file not found")
   sys.exit(1)
@@ -56,7 +53,7 @@ UPDATE_RATE =   float(os.getenv('UPDATE_RATE'))
 ACTIVE_RATE =   float(os.getenv('ACTIVE_RATE'))
 INACTIVE_RATE = float(os.getenv('INACTIVE_RATE'))
 
-
+# Lamp item object & methods
 class LAMP:
   value = None # current live value of the lamp
   value = 20
@@ -64,6 +61,13 @@ class LAMP:
     if name is None:
       raise "Lamp needs itemname"
     self.name = name
+  def setvalue(self, x):
+    if x < 0:
+      x = 0
+    elif x > 100:
+      x = 100
+    self.value = x
+    logging.info("Lamp value set to: %d" % self.value)
   def add(self, x):
     mod = self.transform(self.value)
     new = self.value + x * mod
@@ -94,7 +98,7 @@ class LAMP:
     return mod
 
 
-
+# encoder wrapper class for delta handling
 class ENCODE:
   delta = 0
   active = 0
@@ -129,18 +133,17 @@ class ENCODE:
     return self.encoder.get_steps()
 
 
-
-lamp = LAMP("testitem")
+# lamp & encoder setup
+lamp = LAMP(os.getenv('OHItem'))
 en = ENCODE(CLK=int(os.getenv('A_PIN')), DT=int(os.getenv('B_Pin')))
 
-
+# worker thread that updates the OpenHab server
 def update_lamp():
   # setup openhab object
   OH = pyOpenHabComm.OPENHABCOMM(url=os.getenv('URL'), user=os.getenv('User'), pw=os.getenv('Pass'))
   Item = os.getenv('OHItem')
-
   while True:
-    if e.isSet():
+    if eventActive.isSet():
       logging.debug ("Sleepting -update")
       print ("Sleepting -update")
       time.sleep(UPDATE_RATE) # Active wait x seconds between updates
@@ -148,36 +151,49 @@ def update_lamp():
       logging.debug ("Blocked")
       print("Blocked")
       time.sleep(.1)
-      e.wait()  # wait till unblocked. aka active
+      eventActive.wait()  # wait till unblocked. aka active
       cur = OH.getItemStatus(Item) # get current value
       logging.debug("Current item val: %s" % cur)
       logging.info("Lamp val: %s" % cur['state'])
+      # update lamp with latest value from server
+      lamp.setvalue(int(cur['state']))
     
     delta = en.popDelta()
     logging.debug ("Delta popped was: %d" % delta)
-    # TODO Send to openhab
-    logging.debug(e.isSet())
+    lamp.add(delta)
+    if delta != 0:
+      # TODO Send to openhab
+      # OH.sendItemCommand(Item, lamp.value)
+      logging.info("Sent %d to server" % lamp.value)
+    logging.debug(eventActive.isSet())
     print ("Was here")
 
-e = threading.Event()
-t = threading.Thread(target=update_lamp, name="update lamp", daemon=True)
-t.start()
+# Thread setup
+eventActive = threading.Event()
+tUpdateLamp = threading.Thread(target=update_lamp, name="update lamp", daemon=True)
+tUpdateLamp.start()
 active = 0    # Initialize to inactive
+activeTimeout = 0
 
-
+# Main()
 while True:
   try:
     activeLast = active
     active = en.active
+    
+    if active and not activeLast:
+      activeTimeout = float(os.getenv('ACTIVETIMEOUT'))
+      print ("Active timeout is: %f" % activeTimeout)
 
-    logging.info ("%d: curr delta: %d" % (active,en.delta))
+    logging.info ("%d: curr delta: %d  Atimout: %f" % (active,en.delta, activeTimeout))
 
     # Determin how long to poll/sleep.
-    if active:  # Fast polling when activly being used
+    if activeTimeout > 0:  # Fast polling when activly being used
       time.sleep(ACTIVE_RATE)
-      e.set()
+      eventActive.set()
+      activeTimeout = activeTimeout - ACTIVE_RATE
     else:       # Slower polling to reduce CPU usage when inactive
-      e.clear()
+      eventActive.clear()
       time.sleep(INACTIVE_RATE)
 
   except KeyboardInterrupt:
