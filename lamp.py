@@ -8,6 +8,7 @@ import os
 from dotenv import load_dotenv
 import threading
 import logging
+import systemd.daemon
 import gaugette.gpio
 import gaugette.rotary_encoder
 import gaugette.switch
@@ -25,6 +26,8 @@ import pdb
 # notiice signal sending for future systemd service
 # Improve Lamp and Encode classes
 # traceback error in main
+# setup: dedicated service user
+# pip clean up library dependancies
 
 
 # Logger: logging config   https://docs.python.org/3/howto/logging-cookbook.html
@@ -41,11 +44,19 @@ fh.setFormatter(formatter)     # set format
 fh.setLevel(logging.DEBUG)     # set level for file logging
 logger.addHandler(fh)          # add filehandle to logger
 
-# Logger: create console handle
-ch = logging.StreamHandler()
-ch.setLevel(logging.INFO)     # set logging level for consol
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+# Logger: create console handle - Note: not needed when using as a systemd service
+#ch = logging.StreamHandler()
+#ch.setLevel(logging.INFO)     # set logging level for consol
+#ch.setFormatter(formatter)
+#logger.addHandler(ch)
+
+# Logger: create systemd Journal handler
+from systemd import journal
+jh = systemd.journal.JournalHandler()
+jh.setLevel(logging.INFO)
+j_formatter = logging.Formatter('%(message)s')   # Journaling already tracks 'time host service: '
+jh.setFormatter(j_formatter)
+logger.addHandler(jh)
 
 # reduce logging level of libraries
 logging.getLogger("pyOpenHabComm").setLevel(logging.INFO)
@@ -188,7 +199,9 @@ activeTimeout = 0
 
 # Main()
 logging.info("Script started")
+systemd.daemon.notify('READY=1')
 while True:
+  systemd.daemon.notify('WATCHDOG=1')
   try:
     activeLast = active
     active = en.active
@@ -209,6 +222,7 @@ while True:
 
   except KeyboardInterrupt:
     logging.info("Shutdown requested...exiting")
+    systemd.daemon.notify('STOPPING=1')
     logging.shutdown()
     sys.exit(0)
   except Exception:
