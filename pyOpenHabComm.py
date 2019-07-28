@@ -21,6 +21,7 @@ class OPENHABCOMM():
         # Send activity to server
         try:
             myresponce = requests.post(self.url + 'items/' + item, data, auth=(self.user,self.pw), timeout=3.0)
+            OHLogger.debug("Return value: %r" % myresponce.text)
         except (requests.ConnectTimeout, requests.ConnectionError) as e:
             OHLogger.error ("Connection error")
             OHLogger.error(str(e))
@@ -30,13 +31,12 @@ class OPENHABCOMM():
         except requests.RequestException as e:
             OHLogger.error ("Request: General Error")
             OHLogger.error (str(e))
-        else:
-            OHLogger.info (myresponce.text)
 
     def getItemStatus(self, item):
         try:
-            #OHLogger.debug("u: %s   p: %s" % (self.user, self.pw))
             myresponce = requests.get(self.url + 'items/' + item, auth=(self.user,self.pw), timeout=3.0)
+            OHLogger.debug("Item value: %r" % myresponce.text)
+            return myresponce.json()
         except (requests.ConnectTimeout, requests.ConnectionError) as e:
             OHLogger.error ("Connection error")
             OHLogger.error(str(e))
@@ -46,10 +46,7 @@ class OPENHABCOMM():
         except requests.RequestException as e:
             OHLogger.error ("Request: General Error")
             OHLogger.error (str(e))
-        else:
-            OHLogger.info (myresponce.text)
-        OHLogger.debug("Item value: %r" % myresponce.text)
-        return myresponce.json()
+        
 
 
 # Testing

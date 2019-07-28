@@ -15,19 +15,12 @@ import gaugette.switch
 import pyOpenHabComm
 from datetime import datetime, timedelta
 
-# debugging
-# https://realpython.com/python-debugging-pdb/
-import pdb
-# set tracepoint with pdb.set_trace()
-
-
 # TODO
 # term signal handling
-# notiice signal sending for future systemd service
 # Improve Lamp and Encode classes
 # traceback error in main
 # setup: dedicated service user
-# pip clean up library dependancies
+# Merge update_lamp into main loop
 
 
 # Logger: logging config   https://docs.python.org/3/howto/logging-cookbook.html
@@ -38,42 +31,53 @@ logger.setLevel(logging.DEBUG)
 # Create formatter
 formatter = logging.Formatter('[%(asctime)s] [%(levelname)-5s] [%(threadName)s] - %(message)s')
 
-# Logger: create file handler
-fh = logging.FileHandler('lamp.log', mode='w')  # w while testing
-fh.setFormatter(formatter)     # set format
-fh.setLevel(logging.DEBUG)     # set level for file logging
-logger.addHandler(fh)          # add filehandle to logger
+# .env import
+## Find script directory
+## https://stackoverflow.com/questions/595305/how-do-i-get-the-path-of-the-python-script-i-am-running-in
+envLoc = os.path.dirname(sys.argv[0]) + "/.env"
+# Test if exist then import .env
+if not os.path.exists(envLoc):
+  logging.error(".env file not found")
+  logging.debug("envLoc value: %r" % envLoc)
+  sys.exit(1)
+try:
+  load_dotenv(envLoc)  # loads .env file in current directoy
+except:
+  logging.error("Error loading .env file")
+  sys.exit(1)
 
 # Logger: create console handle - Note: not needed when using as a systemd service
-#ch = logging.StreamHandler()
-#ch.setLevel(logging.INFO)     # set logging level for consol
-#ch.setFormatter(formatter)
-#logger.addHandler(ch)
+if os.getenv('LOGGING_ENABLE_CONSOLE') == 'True':
+  ch = logging.StreamHandler()
+  ch.setLevel(logging.INFO)     # set logging level for consol
+  ch.setFormatter(formatter)
+  logger.addHandler(ch)
 
+#print (type(bool(os.getenv('LOGGING_ENABLE_JOURNAL'))))
+#print (os.getenv('LOGGING_ENABLE_JOURNAL'))
 # Logger: create systemd Journal handler
-from systemd import journal
-jh = systemd.journal.JournalHandler()
-jh.setLevel(logging.INFO)
-j_formatter = logging.Formatter('%(message)s')   # Journaling already tracks 'time host service: '
-jh.setFormatter(j_formatter)
-logger.addHandler(jh)
+if os.getenv('LOGGING_ENABLE_JOURNAL') == 'True':
+  from systemd import journal
+  jh = systemd.journal.JournalHandler()
+  jh.setLevel(logging.INFO)
+  j_formatter = logging.Formatter('%(message)s')   # Journaling already tracks 'time host service: '
+  jh.setFormatter(j_formatter)
+  logger.addHandler(jh)
+
+# Logger: create file handler
+if os.getenv('LOGGING_ENABLE_FILE') == 'True':
+  SERVICE_LOG_PATH=os.getenv('SERVICE_LOG_PATH') + "lamp.log"
+  logging.debug ("Service Log path: %r" % SERVICE_LOG_PATH)
+  fh = logging.FileHandler(SERVICE_LOG_PATH, mode='a') # w while testing 
+  fh.setFormatter(formatter)     # set format
+  fh.setLevel(logging.DEBUG)     # set level for file logging
+  logger.addHandler(fh)          # add filehandle to logger
 
 # reduce logging level of libraries
 logging.getLogger("pyOpenHabComm").setLevel(logging.INFO)
 logging.getLogger("schedule").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)   # used by requests. cuts out 'connectionpool' logs
-
-
-# .env import
-if not os.path.exists("./.env"):
-  logging.error(".env file not found")
-  sys.exit(1)
-try:
-  load_dotenv()  # loads .env file in current directoy
-except:
-  logging.error("Error loading .env file")
-  sys.exit(1)
 
 UPDATE_RATE =   float(os.getenv('UPDATE_RATE'))
 ACTIVE_RATE =   float(os.getenv('ACTIVE_RATE'))
@@ -177,10 +181,14 @@ def update_lamp():
       time.sleep(.1)
       eventActive.wait()  # wait till unblocked. aka active
       cur = OH.getItemStatus(Item) # get current value
-      logging.debug("Current item val: %s" % cur)
-      logging.info("Current lamp val: %s" % cur['state'])
-      # update lamp with latest value from server
-      lamp.setvalue(int(cur['state']))
+      if cur is not None:
+        logging.debug("Current item val: %s" % cur)
+        logging.info("Current lamp val: %s" % cur['state'])
+        # update lamp with latest value from server
+        lamp.setvalue(int(cur['state']))
+      else: # if cur is None
+        logging.warning("Did not get a value from OH. Setting to 50")
+        lamp.setvalue(50)
     
     delta = en.popDelta()
     logging.debug ("Delta popped was: %d" % delta)
