@@ -17,11 +17,11 @@ class OPENHABCOMM():
         self.datatype = datatype
 
     def sendItemCommand(self, item, data):
-        OHLogger.debug ("Sending %r type %r to item %r" % (data, type(data), item))
+        OHLogger.debug ("Sending %r type %r to item %r (auto converting to str)" % (data, type(data), item))
 
         # Send activity to server
         try:
-            myresponce = requests.post(self.url + 'items/' + item, data, auth=(self.user,self.pw), timeout=3.0)
+            myresponce = requests.post(self.url + 'items/' + item, str(data), auth=(self.user,self.pw), timeout=3.0)
             OHLogger.debug("Return value: %r" % myresponce.text)
         except (requests.ConnectTimeout, requests.ConnectionError) as e:
             OHLogger.error ("Connection error")
@@ -69,10 +69,10 @@ if __name__ == "__main__":
     I = os.getenv('OHItem')
     h = OPENHABCOMM(U, os.getenv('User'), os.getenv('Pass'))
 
-    h.sendItemCommand(I,"ON")
+    h.sendItemCommand(I,"67")  # Turn on to 67%
     sleep(.250)
     OHLogger.info(h.getItemStatus(I))
-    sleep(.250)
-    h.sendItemCommand(I,"OFF")
+    sleep(1.250)
+    h.sendItemCommand(I,"0")    # Turn off
     sleep(.250)
     OHLogger.info(h.getItemStatus(I))
