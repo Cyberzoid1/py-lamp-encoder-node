@@ -1,25 +1,8 @@
-#[Unit]
-#Description=Dummy Service
-#After=multi-user.target
-#Conflicts=getty@tty1.service
-#
-#[Service]
-#Type=simple
-#ExecStart=/usr/bin/python3 /home/nick/projects/lamp/test.py
-#StandardInput=tty-force
-#
-#[Install]
-#WantedBy=multi-user.target
-
-
-
-
-# systemd unit file for the Python Demo Service
-
+# systemd unit file
 
 [Unit]
-# Human readable name of the unit
-Description=pylamp
+# Human readable name of the unit. Updated in override file
+Description=pyService
 After=multi-user.target
 
 [Service]
@@ -43,9 +26,8 @@ StartLimitAction=none
 # Our service will notify systemd once it is up and running
 Type=notify
 
-# Use a dedicated user to run our service
-#User=python_demo_service
-User=openhab
+# Use a dedicated user to run our service. Added in override file
+User=None
 
 
 [Install]

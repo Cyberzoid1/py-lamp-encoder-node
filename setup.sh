@@ -53,7 +53,7 @@ echo -e "\nSetting up system service"
 sudo mkdir -p "${SERVICE_LOG_PATH}"
 sudo chown -R "${SERVICE_USER}:${SERVICE_USER}" "${SERVICE_LOG_PATH}"
 sudo chmod -R 774 "${SERVICE_LOG_PATH}"
-SERVICE_PATH="/lib/systemd/system/$SERVICE_NAME"
+SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
 # check if a service file already exists and delete if so.
 if [ -f "${SERVICE_PATH}" ]; then
   echo -e "\n Removing ${SERVICE_NAME} and replacing with new service"
@@ -63,6 +63,15 @@ sudo cp -v "${SERVICE_NAME}" "${SERVICE_PATH}"       # copy service to systemd d
 sudo chmod 644 "${SERVICE_PATH}"
 chmod +x "${SERVICE_PATH}"     # << is this needed?
 
+# Setup systemd unit override file
+override="""[Unit]
+Description=${SERVICE_DESCRIPTION}
+[Service]
+User=${SERVICE_USER}
+"""
+sudo mkdir -p "${SERVICE_PATH}.d"
+echo "${override}" > "${SERVICE_PATH}.d/override.conf"
+
 # Load new service file
 sudo systemctl daemon-reload
 echo -e "\nEnabling and starting service"
@@ -70,6 +79,8 @@ sleep 0.2
 sudo systemctl enable "${SERVICE_NAME}"
 sleep 0.2
 sudo systemctl restart "${SERVICE_NAME}"
+sleep 0.2
+sudo systemctl status "${SERVICE_NAME}"
 echo "You can check journalctl output with: 'sudo journalctl -u ${SERVICE_NAME}'"
 
 
