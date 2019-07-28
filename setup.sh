@@ -7,7 +7,8 @@ if [ $EUID != 0 ]; then
 fi
 
 # Import .env variables
-ENV_PATH=".env"
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+ENV_PATH="${DIR}/.env"
 if [ -f "${ENV_PATH}" ]; then
   source "${ENV_PATH}"
 else
@@ -17,16 +18,32 @@ fi
 
 echo "Setup started"
 
+# Setup service user
+echo -e "\nUsing ${SERVICE_USER} for service user"
+# Create user
+sudo useradd --system --shell /sbin/nologin "${SERVICE_USER}"
+# pi group reference: https://raspberrypi.stackexchange.com/questions/70214/what-does-each-of-the-default-groups-on-the-raspberry-pi-do
+sudo usermod -aG dialout,gpio "${SERVICE_USER}"
 
 # Install Python dependancies
-sudo apt update -q
-sudo apt install python3 python3-pip
-sudo pip3 install -r requirements.txt
-
-  # Download pygaugette
-  git clone https://github.com/guyc/py-gaugette.git
-  ln -s py-gaugette/gaugette ./gaugette       # Use if installing localy
-  #./py-gaugette/setup.sh                        # Installs library system wide
+if [[ $* != *-s* ]]; then   # sktp dependancies install when given -s
+  sudo apt update -q
+  sudo apt install python3 python3-pip
+  sudo pip3 install -r requirements.txt
+    # Download pygaugette
+    if [ -d "py-gaugette" ]; then
+      cd py-gaugette
+      echo -e "\nPulling latest py-gaugette"
+      git pull
+      cd ../
+    else
+      echo -e "\nClonning py-gaugette"
+      git clone https://github.com/guyc/py-gaugette.git
+      ln -s py-gaugette/gaugette ./gaugette                                 # Use if installing localy
+      sudo chown -R "${SERVICE_USER}:${SERVICE_USER}" py-gaugette gaugette  # Remove root as owner
+      #./py-gaugette/setup.sh                                               # Installs library system wide
+    fi
+fi
 
 
 # Setup systemd unit file
@@ -35,6 +52,7 @@ echo -e "\nSetting up system service"
 # Create a location for logger to write files to
 sudo mkdir -p "${SERVICE_LOG_PATH}"
 sudo chown -R "${SERVICE_USER}:${SERVICE_USER}" "${SERVICE_LOG_PATH}"
+sudo chmod -R 774 "${SERVICE_LOG_PATH}"
 SERVICE_PATH="/lib/systemd/system/$SERVICE_NAME"
 # check if a service file already exists and delete if so.
 if [ -f "${SERVICE_PATH}" ]; then
@@ -47,8 +65,10 @@ chmod +x "${SERVICE_PATH}"     # << is this needed?
 
 # Load new service file
 sudo systemctl daemon-reload
-echo "Enabling and starting service"
+echo -e "\nEnabling and starting service"
+sleep 0.2
 sudo systemctl enable "${SERVICE_NAME}"
+sleep 0.2
 sudo systemctl restart "${SERVICE_NAME}"
 echo "You can check journalctl output with: 'sudo journalctl -u ${SERVICE_NAME}'"
 

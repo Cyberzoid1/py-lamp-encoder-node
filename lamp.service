@@ -45,7 +45,7 @@ Type=notify
 
 # Use a dedicated user to run our service
 #User=python_demo_service
-User=nick
+User=openhab
 
 
 [Install]
