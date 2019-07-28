@@ -6,7 +6,6 @@ import time
 import sys
 import os
 from dotenv import load_dotenv
-import threading
 import logging
 import systemd.daemon
 import gaugette.gpio
@@ -20,7 +19,7 @@ from datetime import datetime, timedelta
 # Improve Lamp and Encode classes
 # traceback error in main
 # setup: dedicated service user
-# Merge update_lamp into main loop
+# Incorporate encoder sw
 
 
 # Logger: logging config   https://docs.python.org/3/howto/logging-cookbook.html
@@ -29,12 +28,12 @@ logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
 # Create formatter
-formatter = logging.Formatter('[%(asctime)s] [%(levelname)-5s] [%(threadName)s] - %(message)s')
+formatter = logging.Formatter('[%(asctime)s] [%(levelname)-5s] [%(name)s] - %(message)s')
 
 # .env import
 ## Find script directory
-## https://stackoverflow.com/questions/595305/how-do-i-get-the-path-of-the-python-script-i-am-running-in
-envLoc = os.path.dirname(sys.argv[0]) + "/.env"
+## https://stackoverflow.com/a/9350788
+envLoc = os.path.dirname(os.path.realpath(__file__)) + "/.env"
 # Test if exist then import .env
 if not os.path.exists(envLoc):
   logging.error(".env file not found")
@@ -53,14 +52,12 @@ if os.getenv('LOGGING_ENABLE_CONSOLE') == 'True':
   ch.setFormatter(formatter)
   logger.addHandler(ch)
 
-#print (type(bool(os.getenv('LOGGING_ENABLE_JOURNAL'))))
-#print (os.getenv('LOGGING_ENABLE_JOURNAL'))
 # Logger: create systemd Journal handler
 if os.getenv('LOGGING_ENABLE_JOURNAL') == 'True':
   from systemd import journal
   jh = systemd.journal.JournalHandler()
-  jh.setLevel(logging.INFO)
-  j_formatter = logging.Formatter('%(message)s')   # Journaling already tracks 'time host service: '
+  jh.setLevel(logging.DEBUG) #INFO)
+  j_formatter = logging.Formatter('[%(levelname)-5s] [%(threadName)s][%(name)s] - %(message)s')   # Journaling already tracks 'time host service: '
   jh.setFormatter(j_formatter)
   logger.addHandler(jh)
 
@@ -105,7 +102,7 @@ class LAMP:
       new = 100
     if new < 0:
       new = 0
-    logging.info ("curv: %d mod: %f x: %d xm: %f Newr: %f  Newd: %d" % (self.value,mod,x,x*mod,new,int(new)))
+    logging.debug ("curv: %d mod: %f x: %d xm: %f Newr: %f  Newd: %d" % (self.value,mod,x,x*mod,new,int(new)))
     self.value = int(new)
 
   # Scales input based on current value
@@ -142,7 +139,7 @@ class ENCODE:
   def callback(self, x):
     self.delta = self.delta + x
     self.active = 1
-    #logging.debug ("x: %d delta: %d" %(x,self.delta))
+    logging.debug ("Caklback> x: %d delta: %d" %(x,self.delta))
 
   def resetDelta(self):
     self.delta  = 0
@@ -167,43 +164,12 @@ class ENCODE:
 lamp = LAMP(os.getenv('OHItem'))
 en = ENCODE(CLK=int(os.getenv('A_PIN')), DT=int(os.getenv('B_Pin')))
 
-# worker thread that updates the OpenHab server
-def update_lamp():
-  # setup openhab object
-  OH = pyOpenHabComm.OPENHABCOMM(url=os.getenv('URL'), user=os.getenv('User'), pw=os.getenv('Pass'))
-  Item = os.getenv('OHItem')
-  while True:
-    if eventActive.isSet():
-      logging.debug ("Worker sleepting")
-      time.sleep(UPDATE_RATE) # Active wait x seconds between updates
-    else:
-      logging.debug ("Worker Blocked")
-      time.sleep(.1)
-      eventActive.wait()  # wait till unblocked. aka active
-      cur = OH.getItemStatus(Item) # get current value
-      if cur is not None:
-        logging.debug("Current item val: %s" % cur)
-        logging.info("Current lamp val: %s" % cur['state'])
-        # update lamp with latest value from server
-        lamp.setvalue(int(cur['state']))
-      else: # if cur is None
-        logging.warning("Did not get a value from OH. Setting to 50")
-        lamp.setvalue(50)
-    
-    delta = en.popDelta()
-    logging.debug ("Delta popped was: %d" % delta)
-    lamp.add(delta)
-    if delta != 0:
-      # TODO Send to openhab
-      # OH.sendItemCommand(Item, lamp.value)
-      logging.info("Sent %d to server" % lamp.value)
-
-# Thread setup
-eventActive = threading.Event()
-tUpdateLamp = threading.Thread(target=update_lamp, name="UpdateLamp", daemon=True)
-tUpdateLamp.start()
 active = 0    # Initialize to inactive
 activeTimeout = 0
+
+# setup openhab object
+OH = pyOpenHabComm.OPENHABCOMM(url=os.getenv('URL'), user=os.getenv('User'), pw=os.getenv('Pass'))
+Item = os.getenv('OHItem')
 
 # Main()
 logging.info("Script started")
@@ -211,22 +177,36 @@ systemd.daemon.notify('READY=1')
 while True:
   systemd.daemon.notify('WATCHDOG=1')
   try:
-    activeLast = active
     active = en.active
     
-    if active and not activeLast:
+    # Active edge
+    if active and not activeTimeout > 0:   # Note: active could be false while still within activeTimeout period
       logging.info("Encoder now active")
-      activeTimeout = float(os.getenv('ACTIVETIMEOUT'))
+      cur = OH.getItemStatus(Item) # get current value from OpenHab
+      if cur is not None:
+        logging.debug("Current item val: %s" % cur)
+        logging.info("Current lamp val: %s" % cur['state'])
+        # update lamp with latest value from server
+        lamp.setvalue(int(cur['state']))
+      else: # if cur is None
+        logging.warning("Could not get a value from OH. Setting to 50")
+        lamp.setvalue(50)
 
-    # Determin how long to poll/sleep.
-    if activeTimeout > 0:  # Fast polling when activly being used
-      logging.debug ("%d: curr delta: %d  Atimout: %f" % (active,en.delta, activeTimeout))
-      time.sleep(ACTIVE_RATE)
-      eventActive.set()
-      activeTimeout = activeTimeout - ACTIVE_RATE
-    else:       # Slower polling to reduce CPU usage when inactive
-      eventActive.clear()
-      time.sleep(INACTIVE_RATE)
+    # Actions when active and when inactive
+    if active: # activeTimeout > 0:  # Fast polling when activly being used
+      activeTimeout = float(os.getenv('ACTIVETIMEOUT'))
+      delta = en.popDelta()
+      logging.debug ("Delta popped was: %d" % delta)
+      if delta != 0:
+        lamp.add(delta)
+        # TODO Send to openhab
+        # OH.sendItemCommand(Item, lamp.value)
+        logging.info("Sent %d to server" % lamp.value)
+
+    if activeTimeout > 0:
+      #logging.debug("Actives: %r, %f" % (active, activeTimeout))
+      activeTimeout = activeTimeout - UPDATE_RATE
+    time.sleep(UPDATE_RATE)
 
   except KeyboardInterrupt:
     logging.info("Shutdown requested...exiting")

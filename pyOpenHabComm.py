@@ -5,6 +5,7 @@ import json
 
 # Create Logger. Name will be the filename 'pyOpenHabComm'
 OHLogger = logging.getLogger(__name__)
+OHLogger.setLevel(logging.DEBUG) # default level
 
 class OPENHABCOMM():
     def __init__(self, url=None, user=None, pw=None, datatype=str):
@@ -48,9 +49,10 @@ class OPENHABCOMM():
             OHLogger.error (str(e))
         
 
-
 # Testing
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    OHLogger.info("pyOPenHabComm test script started")
     from time import sleep
     from dotenv import load_dotenv
     import os
@@ -63,7 +65,6 @@ if __name__ == "__main__":
     except:
         OHLogger.error("Error loading .env file")
         sys.exit(2)
-
     U = os.getenv('URL')
     I = os.getenv('OHItem')
     h = OPENHABCOMM(U, os.getenv('User'), os.getenv('Pass'))
