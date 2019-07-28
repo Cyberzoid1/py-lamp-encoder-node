@@ -76,8 +76,6 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)   # used by requests. cuts out 'connectionpool' logs
 
 UPDATE_RATE =   float(os.getenv('UPDATE_RATE'))
-ACTIVE_RATE =   float(os.getenv('ACTIVE_RATE'))
-INACTIVE_RATE = float(os.getenv('INACTIVE_RATE'))
 
 # Lamp item object & methods
 class LAMP:
@@ -138,7 +136,7 @@ class ENCODE:
   def callback(self, x):
     self.delta = self.delta + x
     self.active = 1
-    logging.debug ("Caklback> x: %d delta: %d" %(x,self.delta))
+    #logging.debug ("Caklback> x: %d delta: %d" %(x,self.delta))
 
   def resetDelta(self):
     self.delta  = 0

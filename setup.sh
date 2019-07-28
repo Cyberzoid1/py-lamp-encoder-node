@@ -27,9 +27,10 @@ sudo usermod -aG dialout,gpio "${SERVICE_USER}"
 
 # Install Python dependancies
 if [[ $* != *-s* ]]; then   # sktp dependancies install when given -s
+  echo -e "\nInstalling Python3 and dependancies"
   sudo apt update -q
   sudo apt install python3 python3-pip
-  sudo pip3 install -r requirements.txt
+  sudo pip3 install -r requirements.txt --upgrade
     # Download pygaugette
     if [ -d "py-gaugette" ]; then
       cd py-gaugette
