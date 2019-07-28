@@ -5,6 +5,7 @@
 import time
 import sys
 import os
+import signal
 from dotenv import load_dotenv
 import logging
 import systemd.daemon
@@ -14,10 +15,8 @@ import gaugette.switch
 import pyOpenHabComm
 from datetime import datetime, timedelta
 
-# TODO
-# term signal handling
+# TODO\
 # Improve Lamp and Encode classes
-# traceback error in main
 # setup: dedicated service user
 # Incorporate encoder sw
 
@@ -171,10 +170,19 @@ activeTimeout = 0
 OH = pyOpenHabComm.OPENHABCOMM(url=os.getenv('URL'), user=os.getenv('User'), pw=os.getenv('Pass'))
 Item = os.getenv('OHItem')
 
+# Signal handling
+killNow = False
+def handler_stop_signals(signum, frame):
+  global killNow
+  killNow = True
+  logging.debug("Stop signal received: %r" % signum)
+signal.signal(signal.SIGINT, handler_stop_signals)
+signal.signal(signal.SIGTERM, handler_stop_signals)
+
 # Main()
 logging.info("Script started")
 systemd.daemon.notify('READY=1')
-while True:
+while not killNow:
   systemd.daemon.notify('WATCHDOG=1')
   try:
     active = en.active
@@ -200,7 +208,7 @@ while True:
       if delta != 0:
         lamp.add(delta)
         # TODO Send to openhab
-        # OH.sendItemCommand(Item, lamp.value)
+        OH.sendItemCommand(Item, lamp.value)
         logging.info("Sent %d to server" % lamp.value)
 
     if activeTimeout > 0:
@@ -213,6 +221,12 @@ while True:
     systemd.daemon.notify('STOPPING=1')
     logging.shutdown()
     sys.exit(0)
-  except Exception:
-    traceback.print_exc(file=sys.stdout)
+  except Exception as e:
+    logging.error("Exception in main: %r" % e)
     sys.exit(1)
+
+# cleanup
+logging.info("Shutdown requested...exiting")
+systemd.daemon.notify('STOPPING=1')
+logging.shutdown()
+sys.exit(0)
