@@ -30,7 +30,7 @@ if [[ $* != *-s* ]]; then   # sktp dependancies install when given -s
   echo -e "\nInstalling Python3 and dependancies"
   sudo apt update -q
   sudo apt install -y python3 python3-pip libsystemd-dev wiringpi
-  sudo pip3 install -r requirements.txt --upgrade || echo "Pip3 error exiting"; exit
+  sudo pip3 install -r requirements.txt --upgrade || (echo "Pip3 error exiting"; exit)
     # Download pygaugette
     if [ -d "py-gaugette" ]; then
       cd py-gaugette
