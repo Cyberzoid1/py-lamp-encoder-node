@@ -69,6 +69,7 @@ override="""[Unit]
 Description=${SERVICE_DESCRIPTION}
 [Service]
 User=${SERVICE_USER}
+ExecStart=/usr/bin/python3 ${SERVICE_EXECUTABLE}
 """
 sudo mkdir -p "${SERVICE_PATH}.d"
 echo "${override}" > "${SERVICE_PATH}.d/override.conf"
