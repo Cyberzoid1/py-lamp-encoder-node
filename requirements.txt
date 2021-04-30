@@ -4,5 +4,5 @@ python-dotenv==0.10.3
 requests==2.22.0
 RPi.GPIO==0.6.5
 systemd-python==234
-urllib3==1.25.3
+urllib3==1.25.8
 wiringpi==2.46.0
