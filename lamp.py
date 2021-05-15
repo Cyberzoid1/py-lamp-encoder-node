@@ -55,7 +55,7 @@ if os.getenv('LOGGING_ENABLE_CONSOLE') == 'True':
 if os.getenv('LOGGING_ENABLE_JOURNAL') == 'True':
   from systemd import journal
   jh = systemd.journal.JournalHandler()
-  jh.setLevel(logging.DEBUG) #INFO)
+  jh.setLevel(logging.INFO)
   j_formatter = logging.Formatter('[%(levelname)-5s] [%(threadName)s][%(name)s] - %(message)s')   # Journaling already tracks 'time host service: '
   jh.setFormatter(j_formatter)
   logger.addHandler(jh)
@@ -64,7 +64,7 @@ if os.getenv('LOGGING_ENABLE_JOURNAL') == 'True':
 if os.getenv('LOGGING_ENABLE_FILE') == 'True':
   SERVICE_LOG_PATH=os.getenv('SERVICE_LOG_PATH') + "lamp.log"
   logging.debug ("Service Log path: %r" % SERVICE_LOG_PATH)
-  fh = logging.FileHandler(SERVICE_LOG_PATH, mode='a') # w while testing 
+  fh = logging.FileHandler(SERVICE_LOG_PATH, mode='a') # w while testing
   fh.setFormatter(formatter)     # set format
   fh.setLevel(logging.DEBUG)     # set level for file logging
   logger.addHandler(fh)          # add filehandle to logger
@@ -85,6 +85,7 @@ class LAMP:
     if name is None:
       raise "Lamp needs itemname"
     self.name = name
+
   def setvalue(self, x):
     if x < 0:
       x = 0
@@ -92,8 +93,17 @@ class LAMP:
       x = 100
     self.value = x
     logging.info("Lamp value set to: %d" % self.value)
+
   def add(self, x):
     mod = self.transform(self.value)
+    # Fast or slow rate based on how much encoder was popped
+    xA = abs(x)
+    if xA < 7:
+        logging.debug ("Delta mod normal")
+        mod = mod * 1.5
+    else:
+        logging.debug ("Delta mod fast")
+        mod = mod * 3
     new = self.value + x * mod
     if new > 100:
       new = 100
@@ -106,13 +116,13 @@ class LAMP:
   def transform(self, x):
     # https://mycurvefit.com/
     # Data:
-    # 1                1          
-    # 10                1.1        
-    # 20                1.3        
-    # 40                1.7        
-    # 50                2          
-    # 75                3          
-    #100                3    
+    # 1                1
+    # 10                1.1
+    # 20                1.3
+    # 40                1.7
+    # 50                2
+    # 75                3
+    #100                3
     a = 3.180
     b = 1.122
     c = 3.180
@@ -141,18 +151,18 @@ class ENCODE:
   def resetDelta(self):
     self.delta  = 0
     self.active = 0 # set to inactive
-  
+
   # returns & clears delta
   def popDelta(self):
     d = self.delta
     self.delta  = 0
     self.active = 0 # set to inactive
     return d
-  
+
   # return delta
   def getdelta(self):
     return self.delta
-  
+
   def get_cycles(self):
     return self.encoder.get_steps()
 
@@ -184,7 +194,7 @@ while not killNow:
   systemd.daemon.notify('WATCHDOG=1')
   try:
     active = en.active
-    
+
     # Active edge
     if active and not activeTimeout > 0:   # Note: active could be false while still within activeTimeout period
       logging.info("Encoder now active")
@@ -198,14 +208,14 @@ while not killNow:
         logging.warning("Could not get a value from OH. Setting to 50")
         lamp.setvalue(50)
 
-    # Actions when active and when inactive
+    # Actions when active
     if active: # activeTimeout > 0:  # Fast polling when activly being used
       activeTimeout = float(os.getenv('ACTIVETIMEOUT'))
       delta = en.popDelta()
       logging.debug ("Delta popped was: %d" % delta)
       if delta != 0:
         lamp.add(delta)
-        # TODO Send to openhab
+        # Send to openhab
         OH.sendItemCommand(Item, lamp.value)
         logging.info("Sent %d to server" % lamp.value)
 
