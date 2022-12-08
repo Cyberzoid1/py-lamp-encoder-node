@@ -1,4 +1,4 @@
-certifi==2019.6.16
+certifi==2022.12.7
 pyopenssl
 python-dotenv==0.10.3
 requests==2.22.0
